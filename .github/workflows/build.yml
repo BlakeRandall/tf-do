@@ -1,0 +1,58 @@
+name: Build
+on:
+  pull_request:
+    branches:
+      - 'master'
+env:
+  TF_IN_AUTOMATION: 1
+  TF_INPUT: 0
+  DIGITALOCEAN_ACCESS_TOKEN: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+  CLOUDFLARE_EMAIL: ${{ secrets.CLOUDFLARE_EMAIL }}
+  CLOUDFLARE_API_KEY: ${{ secrets.CLOUDFLARE_API_KEY }}
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Terraform CLI
+        uses: hashicorp/setup-terraform@v1.3.2
+        with:
+          cli_config_credentials_token: ${{ secrets.TF_ACCESS_TOKEN }}
+      - name: Terraform Format
+        id: fmt
+        run: terraform fmt -recursive -diff -check
+      - name: Terraform Init
+        id: init
+        run: terraform init
+      - name: Terraform Validate
+        id: validate
+        run: terraform validate
+      - name: Terraform Plan
+        id: plan
+        run: terraform plan -lock-timeout=300s
+      - uses: actions/github-script@v2.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### Terraform Format and Style \`${{ steps.fmt.outcome }}\`
+            #### Terraform Initialization \`${{ steps.init.outcome }}\`
+            #### Terraform Validation \`${{ steps.validate.outputs.stdout }}\`
+            #### Terraform Plan \`${{ steps.plan.outcome }}\`
+
+            <details><summary>Show Plan</summary>
+
+            \`\`\`${{steps.plan.outcome}}\`\`\`
+
+            </details>
+
+            *Pusher: @${{ github.actor }}, Action: \`${{ github.event_name }}\`, Working Directory: \`${{ env.tf_actions_working_dir }}\`, Workflow: \`${{ github.  workflow }}\`*`;
+
+            github.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
